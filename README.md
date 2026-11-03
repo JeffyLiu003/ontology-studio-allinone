@@ -2,6 +2,15 @@
 
 将代码仓库转换成可查证据、可浏览图谱、可评审修订的七模型工作台。基于 `../ontology-driven-dev/SKILL.md` 的七模型方法及 CardDemo 反向建模成果，实现一个可实际运行的本地技术原型。
 
+## 来源与原始公开仓库
+
+本仓库（[JeffyLiu003/ontology-studio-allinone](https://github.com/JeffyLiu003/ontology-studio-allinone)，私有）是本地技术原型，代码在此仓库内独立实现与维护，并非上游仓库的镜像或分支。
+
+- **方法论与技能来源**：[sharptoolbox/ontology-driven-dev](https://github.com/sharptoolbox/ontology-driven-dev)（公开仓库）。提供「需求探索 → 本体建模 → 应用构建」三步法技能、七模型本体（M1/M2/M3/M5/M6/M7/MU）定义与 `code-paas` 技术底座。本文与 `docs/platform-design.md` 中出现的 `../ontology-driven-dev/SKILL.md` 相对路径（文档内写作 `../../ontology-driven-dev/SKILL.md`）即指该仓库根目录的 `SKILL.md`。
+- **上游许可**：上游仓库采用 MIT License（Copyright (c) 2026 sharptoolbox）。引用其方法论、`SKILL.md` 或文档内容时请遵守该许可；本仓库未随附 LICENSE 文件。
+- **建模对象**：CardDemo 信用卡示例系统（Java 版）的反向建模成果。本仓库只包含平台自身代码、文档与截图，不包含 CardDemo 源码。
+- **未沿用部分**：本工程未使用上游 `code-paas` 技术底座。服务端为单个 Node.js 进程，分析器基于 Python 标准库，数据存放在本地 SQLite，无 npm / pip 第三方依赖。
+
 ## 启动
 
 要求 Node.js 24+、Python 3.10+；接入远程仓库时需要 Git。无 npm / pip 第三方依赖，无独立数据库、图数据库、容器或前端构建步骤。

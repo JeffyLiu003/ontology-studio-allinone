@@ -39,7 +39,7 @@ npm start
 ```
 
 访问 **http://127.0.0.1:45991**。终端按 Ctrl+C 停止。首次运行自动导入相邻 CardDemo 工程已有本体结果；点击「重新分析」会真实读取当前代码并创建新快照。没有相邻工程时可从空工作空间接入其他仓库。
-![Uploading image.png…]()
+<img width="1506" height="959" alt="image" src="https://github.com/user-attachments/assets/10270ff4-ed52-4ed3-9452-212202ff1006" />
 
 
 ```sh

@@ -26,7 +26,7 @@ export function graphSlice(data, options = {}) {
   if (type) nodes = nodes.filter(n => n.model === type || n.model === 'CTX');
   const ids = new Set(nodes.map(n => n.id));
   let edges = data.edges.filter(e => ids.has(e.source) && ids.has(e.target) && (!relation || e.label === relation)
-    && (!evidence || (evidence === 'mapped' ? e.status === 'MAPPED' : e.status !== 'MAPPED')));
+    && (!evidence || (evidence === 'ai' ? e.status === 'AI' : evidence === 'mapped' ? e.status === 'MAPPED' : evidence === 'document' ? e.status === 'DOCUMENT' : e.status === 'CODE')));
   if (focus && ids.has(focus)) {
     const visible = neighborhood(focus, edges, hops, direction);
     const preceding = neighborhood(focus, edges, Math.max(0, hops - 1), direction);

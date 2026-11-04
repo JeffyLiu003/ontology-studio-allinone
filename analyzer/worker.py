@@ -1,29 +1,43 @@
 """Read-only repository normalization and trusted engine execution (stdlib only)."""
 from pathlib import Path
-import os,sys,json,shutil,subprocess,re,time
+import os,sys,json,shutil,subprocess,re,time,hashlib
+from collections import Counter
+sys.path.insert(0,str(Path(__file__).parent/'engine'))
+from java_introspection import masked
 ENGINE=Path(__file__).parent/'engine'
 SKIP={'.git','node_modules','target','dist','build','.runtime','.venv','venv','__pycache__','.codegraph','.idea','ontology','yaml'}
 def emit(stage,message,progress):print(json.dumps(dict(stage=stage,message=message,progress=progress),ensure_ascii=False),flush=True)
 def main():
  source=Path(sys.argv[1]).resolve();run=Path(sys.argv[2]).resolve();name=sys.argv[3];snapshot=run/'source';artifacts=run/'artifacts';snapshot.mkdir(parents=True,exist_ok=True);artifacts.mkdir(exist_ok=True)
  emit('扫描仓库','正在只读扫描源码与构建描述',15)
- paths=[];total=0;skipped=[]
- for folder,dirs,files in os.walk(source,followlinks=False):
+ paths=[];total=0;skipped=[];scan_errors=[];languages=Counter();java_text={};java_bytes={}
+ def walk_error(error):scan_errors.append(dict(path=str(error.filename or source),reason="DIRECTORY_UNREADABLE",message=str(error)))
+ for folder,dirs,files in os.walk(source,followlinks=False,onerror=walk_error):
   dirs[:]=sorted(d for d in dirs if d not in SKIP and not d.startswith('.') and not (Path(folder)/d).is_symlink())
   for f in sorted(files):
    p=Path(folder)/f
-   if p.is_symlink() or not(p.suffix=='.java' or f in ['pom.xml','application.yml','application.yaml','app.js']):continue
+   if p.is_symlink():continue
+   language={'.java':'Java','.kt':'Kotlin','.py':'Python','.js':'JavaScript','.jsx':'JavaScript','.ts':'TypeScript','.tsx':'TypeScript','.go':'Go','.cs':'C#','.scala':'Scala'}.get(p.suffix)
+   if language:languages[language]+=1
+   if not(p.suffix=='.java' or f in ['pom.xml','application.yml','application.yaml','app.js']):continue
    rel=p.relative_to(source)
    if f=='app.js' and 'src/main/resources/static'not in rel.as_posix():continue
    size=p.stat().st_size
    if size>2_000_000:skipped.append(rel.as_posix());continue
+   if p.suffix=='.java':
+    try:
+     java_bytes[rel.as_posix()]=p.read_bytes();java_text[rel.as_posix()]=java_bytes[rel.as_posix()].decode('utf-8')
+    except (UnicodeError,OSError) as error:
+     scan_errors.append(dict(path=rel.as_posix(),reason='SOURCE_UNREADABLE',message=str(error)));continue
    total+=size
    if len(paths)>=6000 or total>60_000_000:raise ValueError('原型支持最多6000个分析文件 / 60MB源码，请缩小仓库范围。')
    paths.append((p,rel))
  java=[(p,r)for p,r in paths if p.suffix=='.java'and 'src/main/java/'in r.as_posix()]
- if not java:raise ValueError('未发现 src/main/java 下的 Java 源码。当前深度分析适配器支持 Java / Spring 工程。')
+ if not java:
+  (artifacts/'scan-diagnostics.json').write_text(json.dumps(dict(languages=dict(languages),skipped=scan_errors,oversized=skipped),ensure_ascii=False,indent=2))
+  raise ValueError('未发现 src/main/java 下可分析的 Java 源码。当前深度分析适配器支持 Java / Spring 工程。'+(' 跳过项：'+json.dumps(scan_errors[:5],ensure_ascii=False) if scan_errors else ''))
  emit('建立源码快照',f'发现 {len(java)} 个 Java 文件，正在建立隔离的分析输入',30)
- mapping={};modules=set();module_names={};source_manifest=[]
+ mapping={};modules=set();module_names={};source_manifest=[];module_stats={};frameworks=Counter()
  for p,rel in paths:
   raw=rel.as_posix()
   if raw=='pom.xml':dstrel=Path('pom.xml')
@@ -40,7 +54,17 @@ def main():
   elif raw.endswith('/pom.xml'):
    module=re.sub(r'[^a-zA-Z0-9_-]+','-',str(rel.parent));dstrel=Path('services')/module/'pom.xml';modules.add(module)
   else:continue
-  dest=snapshot/dstrel;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,dest);mapping[dstrel.as_posix()]=raw;source_manifest.append(dict(path=raw,bytes=p.stat().st_size))
+  if p.suffix=='.java' and 'src/main/java/'in raw:
+   context=module.removesuffix('-service').replace('reference-data','reference').replace('web-ui','web')
+   stats=module_stats.setdefault(context,dict(context=context,javaFiles=0,entities=[],endpoints=[],controllers=0));stats['javaFiles']+=1
+   code=masked(java_text[raw])
+   for token,key in [(r'@(?:\w+\.)*Entity\b','JPA'),(r'@(?:RestController|Controller)\b','Spring MVC'),(r'\brecord\s+\w+','Java record'),(r'@Mapper\b|\bBaseMapper\s*<','MyBatis')]:
+    if re.search(token,code):frameworks[key]+=1
+   for match in re.finditer(r'@(?:\w+\.)*Entity\b',code):stats['entities'].append(dict(path=raw,line=code[:match.start()].count('\n')+1))
+   if re.search(r'@RestController\b',code):
+    stats['controllers']+=1
+    for match in re.finditer(r'@(Get|Post|Put|Patch|Delete)Mapping\b',code):stats['endpoints'].append(dict(path=raw,line=code[:match.start()].count('\n')+1))
+  dest=snapshot/dstrel;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(java_bytes[raw]) if raw in java_bytes else shutil.copyfile(p,dest);mapping[dstrel.as_posix()]=raw;source_manifest.append(dict(path=raw,bytes=dest.stat().st_size,sha256=hashlib.sha256(dest.read_bytes()).hexdigest()))
  rootpom=snapshot/'pom.xml'
  # Preserve original POM semantics for canonical services layouts; inferred module list is only a normalization adapter.
  canonical=any(r.as_posix().startswith('services/')for _,r in java)
@@ -54,10 +78,14 @@ def main():
  # The only executed script is the platform-owned engine; repository scripts, builds and hooks are never executed.
  code="import sys,runpy;sys.path.insert(0,sys.argv[1]);sys.argv=sys.argv[2:];runpy.run_path(sys.argv[0],run_name='__main__')"
  result=subprocess.run([sys.executable,'-I','-c',code,str(ENGINE),str(ENGINE/'build_ontology.py'),str(snapshot),str(artifacts)],cwd=ENGINE,env=env,capture_output=True,text=True,timeout=180)
- if result.returncode:raise ValueError('分析器未完成：'+(result.stderr or result.stdout)[-3000:])
+ if result.returncode:
+  validation=artifacts/'validation.json'
+  failed=[c['check']for c in json.loads(validation.read_text())if not c.get('passed')]if validation.exists()else[]
+  raise ValueError('分析器未完成：'+(result.stderr or result.stdout)[-2400:]+(' 未通过：'+'；'.join(failed[:8])if failed else ''))
  emit('校验与溯源','七模型生成完成，正在核验引用与恢复原始源码路径',80)
- data=json.loads((artifacts/'ontology-data.json').read_text());data['manifest']['source_root']=str(source);data['manifest']['adapter']=profile;data['manifest']['analysis_files']=len(java);data['manifest']['normalized_modules']=not canonical;data['manifest']['skipped_oversized_files']=skipped
+ data=json.loads((artifacts/'ontology-data.json').read_text());data['manifest']['source_root']=str(source);data['manifest']['adapter']=profile;data['manifest']['analysis_files']=len(java);data['manifest']['normalized_modules']=not canonical;data['manifest']['scanInventory']=dict(version=1,languages=dict(languages),frameworkFiles=dict(frameworks),modules=list(module_stats.values()),analyzedJavaFiles=len(java),analyzedFiles=len(source_manifest),skipped=scan_errors,scope='语言清单含测试代码；建模输入仅限支持布局的主源码与必要配置。排除依赖、构建产物、隐藏目录及符号链接；候选识别基于词法规则');data['manifest']['skipped_oversized_files']=skipped
  if skipped:data['manifest']['limitations'].append(f'有 {len(skipped)} 个文件超过 2MB，未进入分析；清单见 skipped_oversized_files。')
+ data['manifest']['source_fingerprint']=hashlib.sha256(json.dumps(sorted((x['path'],x['sha256'])for x in source_manifest),ensure_ascii=False).encode()).hexdigest()
  def restore(obj):
   if isinstance(obj,list):
    for x in obj:restore(x)

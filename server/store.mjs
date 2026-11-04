@@ -16,7 +16,7 @@ export class Store {
   project(id){return this.one('SELECT * FROM projects WHERE id=?',id)}
   projects(){return this.all('SELECT * FROM projects ORDER BY created_at DESC')}
   snapshots(project){return this.all('SELECT * FROM snapshots WHERE project_id=? ORDER BY created_at DESC',project).map(s=>({...s,summary:JSON.parse(s.summary)}))}
-  jobs(){return this.all('SELECT j.*,p.name project_name FROM jobs j JOIN projects p ON j.project_id=p.id ORDER BY j.created_at DESC LIMIT 100').map(j=>({...j,events:JSON.parse(j.events)}))}
+  jobs(){return this.all('SELECT j.*,p.name project_name,s.id snapshot_id FROM jobs j JOIN projects p ON j.project_id=p.id LEFT JOIN snapshots s ON s.id=(SELECT id FROM snapshots WHERE job_id=j.id ORDER BY created_at DESC,rowid DESC LIMIT 1) ORDER BY j.created_at DESC LIMIT 100').map(j=>({...j,events:JSON.parse(j.events)}))}
   job(id){const j=this.one('SELECT * FROM jobs WHERE id=?',id);return j?{...j,events:JSON.parse(j.events)}:null}
   event(id,stage,message,progress){const j=this.job(id);if(!j)return;const events=[...j.events,{time:new Date().toISOString(),stage,message}].slice(-160);this.run('UPDATE jobs SET stage=?,progress=?,events=? WHERE id=?',stage,progress,JSON.stringify(events),id)}
   createProject(name,path,source_type='local',repo_url=null){const id=uid('repo');this.run('INSERT INTO projects VALUES(?,?,?,?,?,?,NULL)',id,name,path,source_type,repo_url,new Date().toISOString());return this.project(id)}

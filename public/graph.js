@@ -1,4 +1,5 @@
 import { MODEL, esc, icon } from './ui.js';
+import { GraphFullscreen } from './graph-fullscreen.js';
 import { graphSlice, neighborhood, directedCurve } from './graph-model.js';
 const NS = 'http://www.w3.org/2000/svg';
 const COLORS = { CTX:'#b4c9e9', M1:'#ab9aff', M2:'#62b5f5', M3:'#edbf6b', M5:'#e695c3', M6:'#6ad7ba', M7:'#6dccdf', MU:'#c5a4ed' };
@@ -20,16 +21,18 @@ export class GraphView {
   const flow = this.mode==='flow';
   this.el.classList.toggle('codegraph-surface', !flow);
   this.el.innerHTML = `<div class="graph-toolbar"><span class="graph-count"></span><span class="graph-engine-status"></span></div>
-   ${!flow?`<div class="cg-view-controls"><label>关联类型<select aria-label="筛选关联类型"><option value="">全部关联</option>${[...new Set(this.data.edges.map(e=>e.label))].sort().map(v=>`<option value="${esc(v)}" ${v===this.relation?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>证据级别<select aria-label="筛选关联证据"><option value="">全部证据</option><option value="code" ${this.evidence==='code'?'selected':''}>源码结构</option><option value="mapped" ${this.evidence==='mapped'?'selected':''}>语义映射 · 待评审</option></select></label><button class="cg-layout-toggle" aria-label="暂停动态布局">${icon('stop',12)}暂停布局</button></div>`:''}
+   ${!flow?`<div class="cg-view-controls"><label>关联类型<select aria-label="筛选关联类型"><option value="">全部关联</option>${[...new Set(this.data.edges.map(e=>e.label))].sort().map(v=>`<option value="${esc(v)}" ${v===this.relation?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>证据级别<select aria-label="筛选关联证据"><option value="">全部证据</option><option value="code" ${this.evidence==='code'?'selected':''}>源码结构</option><option value="mapped" ${this.evidence==='mapped'?'selected':''}>语义映射 · 待评审</option><option value="ai" ${this.evidence==='ai'?'selected':''}>AI 补充 · 待评审</option><option value="document" ${this.evidence==='document'?'selected':''}>文档候选 · 待评审</option></select></label><button class="cg-layout-toggle" aria-label="暂停动态布局">${icon('stop',12)}暂停布局</button></div>`:''}
    <svg class="graph-canvas" role="group" aria-label="可交互本体图谱"><defs><marker id="${this.prefix}-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="${flow?'#ae9bbc':'#77909f'}"/></marker><marker id="${this.prefix}-active-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="${flow?'#8865b9':'#82e6cb'}"/></marker></defs><g class="viewport"><g class="cluster-labels"></g><g class="links"></g><g class="particles"></g><g class="nodes"></g></g></svg>
    <div class="cg-selection hidden"></div><div class="cg-empty hidden"><b>此范围暂无模型节点</b><span>可切换业务域、模型类型或关联条件。</span></div>
-   <div class="graph-controls"><button class="icon-button" data-graph="in" aria-label="放大图谱">${icon('plus',16)}</button><button class="icon-button" data-graph="out" aria-label="缩小图谱">−</button><button class="icon-button" data-graph="fit" aria-label="适应画布">${icon('zoom',16)}</button><button class="icon-button" data-graph="labels" aria-label="切换关系标签" aria-pressed="${this.showLabels}">${icon('table',16)}</button><button class="icon-button" data-graph="clear" aria-label="重置图谱选择">${icon('refresh',16)}</button></div>
+   <div class="graph-controls"><button class="icon-button" data-graph="in" aria-label="放大图谱" title="放大图谱">${icon('plus',16)}<span>放大</span></button><button class="icon-button" data-graph="out" aria-label="缩小图谱" title="缩小图谱">−<span>缩小</span></button><button class="icon-button" data-graph="fit" aria-label="适应画布" title="适应画布">${icon('zoom',16)}<span>适应</span></button><button class="icon-button" data-graph="labels" title="切换关系标签" aria-label="切换关系标签" aria-pressed="${this.showLabels}">${icon('table',16)}</button><button class="icon-button" data-graph="clear" title="重置图谱选择" aria-label="重置图谱选择">${icon('refresh',16)}</button><button class="icon-button graph-fullscreen-button" data-graph="fullscreen" aria-label="全屏显示图谱" title="全屏显示图谱"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/></svg><span>全屏</span></button></div>
    <div class="graph-legend"></div><div class="cg-interaction-hint">拖拽节点 · 滚轮缩放 · 点击探索关联<span>连线动效仅表示关系方向</span></div><div class="graph-tooltip"></div>`;
   this.svg=this.el.querySelector('svg.graph-canvas'); this.viewport=this.el.querySelector('.viewport'); this.nodeLayer=this.el.querySelector('.nodes'); this.linkLayer=this.el.querySelector('.links'); this.particles=this.el.querySelector('.particles'); this.tooltip=this.el.querySelector('.graph-tooltip');
+  this.fullscreen=new GraphFullscreen(this.el,()=>this.fit());
   this.el.querySelectorAll('[data-graph]').forEach(b=>b.onclick=()=>{
    const action=b.dataset.graph;
    if(action==='fit') this.fit(true);
    else if(action==='clear') this.clear();
+   else if(action==='fullscreen') void this.fullscreen.toggle();
    else if(action==='labels') { this.showLabels=!this.showLabels; b.setAttribute('aria-pressed',this.showLabels); this.highlight(); this.saveView(); }
    else this.zoom(action==='in'?1.3:1/1.3);
   });
@@ -50,7 +53,7 @@ export class GraphView {
   this.observer=new ResizeObserver(()=>{if(!this.drag)this.fit();});this.observer.observe(this.el);
  }
  saveView(){this.options.onViewChange?.({relation:this.relation,evidence:this.evidence,focus:this.focus,hops:this.hops,direction:this.direction,paused:this.paused,showLabels:this.showLabels});}
- destroy(){this.destroyed=true;clearTimeout(this.detailTimer);cancelAnimationFrame(this.frame);cancelAnimationFrame(this.cameraFrame);this.observer?.disconnect();this.reduced.removeEventListener('change',this.motionChange);this.el.innerHTML='';}
+ destroy(){this.destroyed=true;this.fullscreen?.destroy();clearTimeout(this.detailTimer);cancelAnimationFrame(this.frame);cancelAnimationFrame(this.cameraFrame);this.observer?.disconnect();this.reduced.removeEventListener('change',this.motionChange);this.el.innerHTML='';}
  rebuild(){cancelAnimationFrame(this.frame);this.frame=0;this.hovered='';this.tooltip.style.display='none';this.build();this.saveView();}
  build(){
   if(this.mode==='flow')return this.buildFlow(this.options.flow);
@@ -82,8 +85,8 @@ export class GraphView {
    e.a=this.byId.get(e.source);e.b=this.byId.get(e.target);
    const key=[e.source,e.target].sort().join('\0'),seen=pairs.get(key)||0;pairs.set(key,seen+1);
    e.bend=this.mode==='flow'?0:seen===0?18:(seen%2?1:-1)*(30+seen*12);
-   e.el=make('path',{id:`${this.prefix}-link-${i}`,class:'graph-link'+(e.status==='MAPPED'?' inferred':''),'marker-end':`url(#${this.prefix}-arrow)`,'vector-effect':'non-scaling-stroke',tabindex:'-1'});
-   const title=make('title');title.textContent=`${e.a.label} → ${e.b.label}\n${e.label} · ${e.status==='MAPPED'?'语义映射，待评审':'源码结构证据'}`;e.el.append(title);
+   e.el=make('path',{id:`${this.prefix}-link-${i}`,class:'graph-link'+(['MAPPED','AI'].includes(e.status)?' inferred':''),'marker-end':`url(#${this.prefix}-arrow)`,'vector-effect':'non-scaling-stroke',tabindex:'-1'});
+   const title=make('title');title.textContent=`${e.a.label} → ${e.b.label}\n${e.label} · ${e.status==='AI'?'AI补充建议，待评审':e.status==='DOCUMENT'?'文档候选证据，待评审':e.status==='MAPPED'?'语义映射，待评审':'源码结构证据'}`;e.el.append(title);
    e.labelEl=make('text',{class:'graph-link-label','text-anchor':'middle'});e.labelEl.textContent=e.label.length>22?e.label.slice(0,21)+'…':e.label;
    e.el.addEventListener('pointerenter',()=>{if(this.drag)return;e.el.classList.add('edge-hover');e.labelEl.classList.add('edge-hover');});
    e.el.addEventListener('pointerleave',()=>{e.el.classList.remove('edge-hover');e.labelEl.classList.remove('edge-hover');});
@@ -93,7 +96,7 @@ export class GraphView {
   });
   for(const n of this.nodes){
    n.radius=this.mode==='flow'?32:n.model==='CTX'?21:Math.min(17,6+Math.sqrt(this.degree.get(n.id))*1.55);
-   const g=make('g',{class:'graph-node','data-node-id':n.id,role:'button',tabindex:'0','aria-label':`${n.label}，${n.model==='CTX'?'业务域':n.model}，${this.degree.get(n.id)} 条关联`});
+   const g=make('g',{class:'graph-node','data-node-id':n.id,role:'button',tabindex:'0','aria-label':`${n.label}，${n.model==='CTX'?(this.data.manifest?.adapter==='document-directory'?'知识文档':'业务域'):n.model}，${this.degree.get(n.id)} 条关联`});
    if(this.mode==='flow'){
     const gate=n.activityType==='GATEWAY';g.append(make('rect',{class:'node-body',x:-116,y:-30,width:232,height:60,rx:['START','END'].includes(n.activityType)?27:9,fill:'#fff',stroke:gate?'#d9bd85':'#b2d4c7','stroke-width':1.8}));
     const text=make('text',{'text-anchor':'middle',y:-4,style:'font-size:14px;stroke:none;fill:#6b607a'});
@@ -111,7 +114,7 @@ export class GraphView {
    g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();this.select(n);if(this.mode==='flow')this.options.onSelect?.(n);}if(e.key==='Escape')this.clear();});
    g.addEventListener('pointerenter',e=>{
     if(this.drag)return;this.hovered=n.id;this.highlight();const r=this.el.getBoundingClientRect();this.tooltip.style.display='block';this.tooltip.style.left=Math.max(8,Math.min(e.clientX-r.left+14,r.width-270))+'px';this.tooltip.style.top=Math.max(70,e.clientY-r.top-70)+'px';
-    this.tooltip.innerHTML=`<strong>${esc(n.label)}</strong><br><small>${esc(n.model==='CTX'?'业务域':n.model)} · ${esc(this.data.contexts[n.context]||n.context)} · ${this.degree.get(n.id)} 条关联</small>`;
+    this.tooltip.innerHTML=`<strong>${esc(n.label)}</strong><br><small>${esc(n.model==='CTX'?(this.data.manifest?.adapter==='document-directory'?'知识文档':'业务域'):n.model)} · ${esc(this.data.contexts[n.context]||n.context)} · ${this.degree.get(n.id)} 条关联</small>`;
    });
    g.addEventListener('pointerleave',()=>{this.hovered='';this.tooltip.style.display='none';this.highlight();});
    n.el=g;this.nodeLayer.append(g);
@@ -120,7 +123,7 @@ export class GraphView {
   if(this.focus&&!this.byId.has(this.focus)){this.focus='';this.saveView();}
   this.el.querySelector('.graph-count').textContent=`${this.nodes.length} 个${this.mode==='flow'?'活动':'节点'} · ${this.links.length} 条关系`;
   this.el.querySelector('.cg-empty').classList.toggle('hidden',this.nodes.length>0);
-  this.el.querySelector('.graph-legend').innerHTML=this.mode==='flow'?'实线：顺序执行　虚线：条件 / 异常分支':Object.entries(MODEL).map(([k,m])=>`<span><i style="background:${COLORS[k]}"></i>${k} ${m.name}</span>`).join('')+'<span class="cg-edge-legend"><i></i>源码结构</span><span class="cg-edge-legend mapped"><i></i>语义映射</span>';
+  this.el.querySelector('.graph-legend').innerHTML=this.mode==='flow'?'实线：顺序执行　虚线：条件 / 异常分支':Object.entries(MODEL).map(([k,m])=>`<span><i style="background:${COLORS[k]}"></i>${k} ${m.name}</span>`).join('')+'<span class="cg-edge-legend"><i></i>源码 / 文档来源</span><span class="cg-edge-legend mapped"><i></i>语义映射</span>';
   this.userMoved=false;this.update();this.highlight();this.fit();this.showSelection();this.ticks=0;this.run();this.syncState();
  }
  run(){
@@ -182,7 +185,7 @@ export class GraphView {
   const edges=this.links.filter(e=>e.source===n.id||e.target===n.id),out=edges.filter(e=>e.source===n.id).length,incoming=edges.filter(e=>e.target===n.id).length;
   panel.innerHTML=`<div class="cg-selection-title"><span class="cg-node-badge" style="color:${this.color(n)}">${esc(n.model==='CTX'?'DOMAIN':n.model)}</span><button class="cg-close" aria-label="清除关联选择">×</button></div><h3>${esc(n.label)}</h3><div class="cg-selection-sub">${esc(this.data.contexts[n.context]||n.context)} · ${out} 条出向 / ${incoming} 条入向</div><div class="cg-selection-actions"><button data-explore="details">查看模型 ${icon('external',11)}</button><button data-explore="focus">${this.focus?'返回全图':'聚焦邻域'}</button></div>
    <div class="cg-neighborhood-tools"><label>邻域范围<select aria-label="邻域层数"><option value="1" ${this.hops===1?'selected':''}>一层关联</option><option value="2" ${this.hops===2?'selected':''}>两层关联</option></select></label><label>方向<select aria-label="邻域关系方向"><option value="both" ${this.direction==='both'?'selected':''}>全部方向</option><option value="out" ${this.direction==='out'?'selected':''}>沿出向扩展</option><option value="in" ${this.direction==='in'?'selected':''}>沿入向扩展</option></select></label></div>
-   <div class="cg-neighbor-heading">当前视图直接关联 <span>${edges.length}</span></div><div class="cg-neighbor-list">${edges.slice(0,20).map((e,i)=>{const outgoing=e.source===n.id,other=this.byId.get(outgoing?e.target:e.source);return `<button data-explore-neighbor="${esc(other.id)}" title="${esc(e.a.label+' → '+e.b.label)}"><span class="cg-relation-direction">${outgoing?'↗':'↙'}</span><span><b>${esc(other.label)}</b><small>${esc(e.label)} · ${outgoing?'出向':'入向'}${e.status==='MAPPED'?' · 待评审':''}</small></span><i style="background:${this.color(other)}"></i></button>`;}).join('')||'<p>当前筛选下没有直接关联。</p>'}</div>${edges.length>20?`<div class="cg-more-relations">展示前 20 / ${edges.length} 条，可筛选关联类型查看。</div>`:''}`;
+   <div class="cg-neighbor-heading">当前视图直接关联 <span>${edges.length}</span></div><div class="cg-neighbor-list">${edges.slice(0,20).map((e,i)=>{const outgoing=e.source===n.id,other=this.byId.get(outgoing?e.target:e.source);return `<button data-explore-neighbor="${esc(other.id)}" title="${esc(e.a.label+' → '+e.b.label)}"><span class="cg-relation-direction">${outgoing?'↗':'↙'}</span><span><b>${esc(other.label)}</b><small>${esc(e.label)} · ${outgoing?'出向':'入向'}${['MAPPED','DOCUMENT','AI'].includes(e.status)?' · 待评审':''}</small></span><i style="background:${this.color(other)}"></i></button>`;}).join('')||'<p>当前筛选下没有直接关联。</p>'}</div>${edges.length>20?`<div class="cg-more-relations">展示前 20 / ${edges.length} 条，可筛选关联类型查看。</div>`:''}`;
   panel.querySelector('.cg-close').onclick=()=>this.clear();
   panel.querySelector('[data-explore="details"]').onclick=()=>this.options.onSelect?.(n);
   panel.querySelector('[data-explore="focus"]').onclick=()=>{this.focus=this.focus?'':n.id;this.rebuild();};
@@ -192,7 +195,7 @@ export class GraphView {
  }
  showEdge(e){
   this.showSelection();const panel=this.el.querySelector('.cg-selection');if(this.mode==='flow')return;
-  const detail=document.createElement('div');detail.className='cg-edge-detail';detail.innerHTML=`<b>${esc(e.label)}</b><span>${esc(e.a.label)} → ${esc(e.b.label)}</span><small>${e.status==='MAPPED'?'语义映射 · 需要领域评审':'源码结构证据 · 非运行时执行记录'}</small>`;panel.querySelector('.cg-selection-sub').after(detail);
+  const detail=document.createElement('div');detail.className='cg-edge-detail';detail.innerHTML=`<b>${esc(e.label)}</b><span>${esc(e.a.label)} → ${esc(e.b.label)}</span><small>${e.status==='AI'?'AI补充建议 · 证据锚点已检查，业务语义待评审':e.status==='DOCUMENT'?'文档候选 · 需要领域评审，非执行关系':e.status==='MAPPED'?'语义映射 · 需要领域评审':'源码结构证据 · 非运行时执行记录'}</small>`;panel.querySelector('.cg-selection-sub').after(detail);
  }
  fit(animate=false){
   const w=this.el.clientWidth,h=this.el.clientHeight;if(!w||!h)return;const padX=this.mode==='flow'?135:65,padY=this.mode==='flow'?45:60,xs=this.nodes.map(n=>n.x),ys=this.nodes.map(n=>n.y),x0=xs.length?Math.min(...xs)-padX:0,y0=ys.length?Math.min(...ys)-padY:0,bw=xs.length?Math.max(...xs)-x0+padX:this.world.w,bh=ys.length?Math.max(...ys)-y0+padY:this.world.h;

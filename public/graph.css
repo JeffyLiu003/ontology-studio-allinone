@@ -9,3 +9,15 @@
 @media(prefers-reduced-motion:reduce){.graph-node,.graph-link,.graph-link-label{transition:none}.edge-particle{display:none}}
 
 .codegraph-surface .graph-legend{background:transparent;border:0;padding:0;border-radius:0;box-shadow:none}.codegraph-surface .graph-node.selected{filter:none}.codegraph-surface .graph-node.selected .node-body{stroke:#edfff9;stroke-width:1.5px}.codegraph-surface .cg-neighbor-list{scrollbar-gutter:stable}
+/* Keep primary view actions visible without scrolling to the bottom of the canvas. */
+.graph-panel .graph-controls .icon-button{width:auto;min-width:32px;gap:5px;padding:0 8px;font-size:11px}
+.graph-panel.codegraph-surface .graph-controls{top:14px;right:18px;bottom:auto}
+.graph-panel.codegraph-surface .graph-controls .icon-button{width:auto;min-width:32px;height:32px;gap:5px;padding:0 8px;font-size:11px}
+.graph-panel.codegraph-surface .graph-legend{right:20px}
+.graph-panel:fullscreen,.graph-panel.graph-page-fullscreen{width:100vw!important;height:100vh!important;height:100dvh!important;min-height:0!important;max-height:none!important;border:0!important;border-radius:0!important;margin:0!important}
+.graph-panel:fullscreen{background-color:#fbfaff}
+.graph-panel.codegraph-surface:fullscreen{background-color:#101b2a}
+.graph-panel.graph-page-fullscreen{position:fixed!important;inset:0!important;z-index:1000!important}
+.graph-panel:fullscreen::backdrop{background:#101b2a}
+@media(max-width:1150px){.graph-panel.codegraph-surface .graph-controls{top:104px;right:12px}.graph-panel.codegraph-surface .cg-selection{top:153px}.graph-panel.codegraph-surface .graph-engine-status{font-size:9px}}
+@media(max-width:480px){.graph-panel .graph-controls .icon-button,.graph-panel.codegraph-surface .graph-controls .icon-button{padding:0 6px;min-width:29px;font-size:10px}}

@@ -1,0 +1,7 @@
+export function searchModels(data,input={}){
+ const query=String(input.query||'').trim().slice(0,300);if(!query)throw Error('请输入搜索词');
+ const terms=query.toLowerCase().split(/[\s,，、;；]+/).filter(Boolean).slice(0,12),limit=Math.max(1,Math.min(30,Number(input.limit)||12));
+ const rows=data.semantic.entities.map(n=>{const reasons=[];let score=0;for(const term of terms){if(n.id.toLowerCase().includes(term)){score+=8;reasons.push('标识匹配：'+term)}if(String(n.label).toLowerCase().includes(term)){score+=10;reasons.push('名称匹配：'+term)}if(String(n.description||'').toLowerCase().includes(term)){score+=2;reasons.push('描述匹配：'+term)}if(JSON.stringify(n.evidence||[]).toLowerCase().includes(term)){score++;reasons.push('证据匹配：'+term)}}return {id:n.id,label:n.label,type:n.type,reviewStatus:n.reviewStatus,description:String(n.description||'').slice(0,450),score,reasons}}).filter(n=>n.score).sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id));
+ return {projectId:data.project.id,snapshot:data.snapshot,query,total:rows.length,truncated:rows.length>limit,results:rows.slice(0,limit),notice:rows.length?'候选匹配不表示业务范围完整或已确认。':'未匹配不代表业务不存在；请拆分中文关键词、使用类名或方法名重试。'};
+}
+export function assertionEvidence(data,id){const a=data.semantic.assertions.find(a=>a.id===id);if(!a)throw Error('断言不存在');return {projectId:data.project.id,snapshot:data.snapshot,assertion:a,evidence:a.evidence,notice:'证据代表快照时刻；使用前核对当前源码。'};}

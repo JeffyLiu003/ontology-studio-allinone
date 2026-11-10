@@ -15,7 +15,8 @@ for folder,dirs,names in os.walk(root,followlinks=False):
   if name.startswith('.') or p.is_symlink() or p.suffix.lower() not in FORMATS|CODE:continue
   files.append(p)
  if visited>20000:break
-files.sort(key=lambda p:(p.relative_to(root).as_posix() not in preferred,p.suffix.lower() not in FORMATS,p.relative_to(root).as_posix()))
+kind=sys.argv[5] if len(sys.argv)>5 else 'documents'
+files.sort(key=lambda p:(p.relative_to(root).as_posix() not in preferred,p.suffix.lower() not in (FORMATS if kind=='documents' else CODE),p.relative_to(root).as_posix()))
 remaining=limit;items=[]
 for p in files:
  if remaining<1000 or len(items)>=24:break

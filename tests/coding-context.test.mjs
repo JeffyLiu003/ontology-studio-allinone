@@ -1,0 +1,6 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {codingContext} from '../server/coding-context.mjs';
+const data={project:{id:'p',path:'/repo'},snapshot:{id:'s'},semantic:{sourcePolicy:'code first',entities:['a','b','c','d'].map(id=>({id,label:id,reviewStatus:'pending'})),assertions:[['a','b'],['b','c'],['c','d']].map(([subject,object],i)=>({id:String(i),subject,object,kind:'inferred',reviewStatus:'pending',evidence:[]})),validation:{findings:[{subject:'b',message:'missing evidence'}]}}};
+test('fixed one-hop scope preserves unresolved relations and boundary',()=>{const r=codingContext(data,{requirement:'change',ids:['a']});assert.deepEqual(r.entities.map(n=>n.id),['a','b']);assert.deepEqual(r.manifest.boundaryAssertionIds,['1']);assert.equal(r.assertions[0].reviewStatus,'pending');assert.equal(r.findings.length,1);assert.equal(r.manifest.sourceIncluded,false);assert.ok(r.files['skill-template/SKILL.md']);assert.equal(r.files['models.json'],codingContext(data,{requirement:'change',ids:['a']}).files['models.json'])});
+test('rejects empty request and foreign model ids',()=>{assert.throws(()=>codingContext(data,{ids:['a']}));assert.throws(()=>codingContext(data,{requirement:'x',ids:['foreign']}));assert.deepEqual(codingContext(data,{requirement:'x',ids:['a'],depth:2}).entities.map(n=>n.id),['a','b','c'])});

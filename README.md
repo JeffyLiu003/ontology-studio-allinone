@@ -18,7 +18,7 @@
 推荐使用 `script` 目录中的启停脚本（macOS / Linux），后台启动后关闭终端也会继续运行：
 
 ```sh
-cd /Users/louis/work-space/Code-projects/Codex/icode-demo/ontology-studio-allinone
+cd /path/to/ontology-studio-allinone
 ./script/start.sh      # 后台启动；已运行时不会重复启动
 ./script/status.sh     # 查看运行状态、地址、PID 和日志路径
 ./script/restart.sh    # 停止后重新启动
@@ -34,7 +34,7 @@ cd /Users/louis/work-space/Code-projects/Codex/icode-demo/ontology-studio-allino
 需要前台调试时仍可使用原有方式：
 
 ```sh
-cd /Users/louis/work-space/Code-projects/Codex/icode-demo/ontology-studio-allinone
+cd /path/to/ontology-studio-allinone
 npm start
 ```
 
@@ -47,7 +47,7 @@ ONTOLOGY_PORT=45992 ONTOLOGY_PYTHON=/path/to/python3 npm start
 ```
 
 - `ONTOLOGY_PORT`：默认 45991。
-- `ONTOLOGY_PYTHON`：Python 可执行文件；优先使用本机已有 Codex Python，找不到则使用 `python3`。
+- `ONTOLOGY_PYTHON`：Python 可执行文件；默认使用系统 PATH 中的 `python3`。
 - `ONTOLOGY_DATA_DIR`：数据保存目录，默认工程下 `.runtime`。
 
 不要用静态文件服务器启动 `public/`，它需要平台 API。
@@ -202,3 +202,31 @@ AI结果进入 `ai_runs`，含提供商、模型、时间、用量、结论、�
 - `POST /api/projects/:id/ai/analyze`：以 `jobId` 或 `snapshotId` 开始分析，可附 `issueId` 聚焦诊断。
 - `GET /api/projects/:id/ai/runs`：分析历史。
 - `POST /api/projects/:id/ai/:runId/cancel|apply|reject|answer`：取消、写入草稿、驳回建议或保存业务答复。
+
+## 业务语义与五层建模
+
+新增「业务语义与分层」：保留七模型，额外建立统一定义、关系词表、字段与状态、实现映射和证据断言。默认五层为系统／业务子域候选／业务对象／业务规则／字段语义，是项目知识组织模板，不宣称是IBM唯一或官方五级规范。模块与文档分组不能直接证明业务域；继承、归属、组成、约束与引用不得混为一类。
+
+代码结构提取、推断映射、文档声明、AI建议分别标记。语义层将聚合边界保留为候选，展示原解析分类和待验证项；不因@Entity存在就认定业务聚合正确。状态集合不等于状态迁移。原始未知关联保留名称并产生待分类诊断，不根据中文连线名自动造正式关系。
+
+每条断言具有稳定ID、主体、关系、客体、来源文件／行号／SHA256、快照版本和独立评审状态。节点被确认不会自动确认其全部关系。具有证据且无引用或类型阻断的断言可独立确认；缺证据关系不能直接确认。评审按快照保存，删除任务时随关联快照清理。历史快照读取时动态兼容，新快照同时保存语义投影。
+
+提供OWL本体Turtle、SHACL shapes及语义JSON导出。OWL包含业务模型定义的元模型、M1业务概念的候选类和逐条重述的RDF断言；生产账户与交易实例不会由类名虚构。未确认关系只作为待评审声明保存，不自动输出为已认可的关系事实；独立确认且有证据的关系才输出直接三元组。不自动生成owl:sameAs、类等价或把五级归属变成rdfs:subClassOf。
+
+当前执行 `local-semantic-profile-v1` 内置引用、关系主体／目标类型、证据缺口及业务缺口检查。导出标准格式不代表运行了完整OWL推理器或SHACL引擎；UI与API明确给出 `owlReasonerExecuted=false`、`shaclEngineExecuted=false`。该版本不新增图数据库或第三方推理服务。
+
+接口：`GET /api/projects/:id/semantic`；`PUT /api/projects/:id/semantic/assertions/:assertionId?snapshot=...` 保存独立评审；`GET /api/projects/:id/export?format=owl|shacl|semantic` 导出。源码项目的大模型证据采样在同等定位优先级下优先代码，文档项目仍按文档模式处理。
+
+## 独立交付与迁移
+
+默认启动空工作空间，不自动读取相邻的 CardDemo 或技能工程。需要导入已有示例时显式指定：
+
+```bash
+ONTOLOGY_IMPORT_BASELINE=/absolute/path/ontology-data.json ONTOLOGY_BASELINE_SOURCE=/absolute/path/source ./script/start.sh
+```
+
+导入只在工作空间没有项目时执行。普通代码、文档项目继续通过界面接入。技能仓库是方法论参考，不是运行依赖。
+
+Python 默认使用系统 PATH 中的 `python3`，可用 `ONTOLOGY_PYTHON=/absolute/path/python3` 显式指定，不再自动选择 Codex 缓存环境。
+
+平台内部快照以相对数据目录的路径保存，读取时动态还原。启动会将可识别的历史内部绝对路径转换为相对路径；真正的外部文件引用保持原样。迁移请停止服务后完整复制数据目录（默认 `.runtime`），不要只复制SQLite；源代码／知识仓库是分析输入，仍需在新机器提供对应路径。密钥配置及主密钥也需随数据目录妥善迁移。移动后如需重新解析，原始输入项目路径需要另行调整。

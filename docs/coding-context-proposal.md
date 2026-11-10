@@ -1,6 +1,6 @@
 # 任务 3：编码上下文包实现方案（待决策）
 
-本文是下一阶段建议，尚未实现上下文包导出、Skill 安装或 MCP 接入。
+历史方案。当前已实现手工上下文导出、项目 Skill 接入脚本及只读 HTTP 查询工具；未实现 MCP 和 ZIP 打包。最新使用方式见 coding-context-usage.md。
 
 ## 建议决策
 
@@ -24,7 +24,7 @@
 | models.json | 所选模型和真实图边，保留来源与人工修订标记 |
 | manifest.json | 项目、快照、Git 版本/输入指纹、模型 ID、文件哈希、筛选参数、生成时间、截断情况 |
 | agent-instructions.md | 建议追加到项目 AGENTS.md 的简短规则片段；不覆盖原项目指令 |
-| skill-template/SKILL.md | ontology-guided-coding 工作流模板；标为可选安装产物 |
+| skill-template/SKILL.md | ontology-context-init 工作流模板；标为可选安装产物 |
 
 首版默认输出源码位置与哈希；源码原文或片段作为显式选择项，不默认打包整个仓库、配置文件、密钥或业务数据库内容。打包可复用 Python 标准库 zipfile，无须新增基础组件。
 

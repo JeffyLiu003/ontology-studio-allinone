@@ -39,12 +39,16 @@ def extract(p):
  if p.suffix.lower() in ('.html','.htm'):
   parser=HTMLText();parser.feed(text);return ''.join(parser.parts)
  return text
+ELEVEN=os.getenv('ONTOLOGY_MODELING_METHOD') in ('eleven','nine')
+EXTRA={'ME':('me-event-model.yaml','events','EVENT'),'M4':('m4-scenario-model.yaml','event_scenarios','SCENARIO'),'MM':('mm-mapping-model.yaml','mappings','MAPPING'),'MI':('mi-interface-model.yaml','interfaces','INTERFACE')}
 RULES=[('M1',r'业务对象|对象模型|对象及约束|^对象$|^实体$'),('M2',r'行为模型|^行为|业务功能清单|功能详述'),('M3',r'规则模型|^规则$|业务规则'),('M5',r'主体.*角色|角色.*权限|^角色$|岗位角色'),('M6',r'流程模型|协同流|审批流|^流程$|端到端.*流程'),('M7',r'查询报表|查询统计|^REP$|^报表$'),('MU',r'界面模型|^界面$|^页面$|^屏幕$|MU 界面')]
+if ELEVEN:RULES[:0]=[('ME',r'事件模型|业务事件|^事件$'),('M4',r'场景模型|事件协同|^场景$'),('MM',r'数据映射|表映射|映射模型'),('MI',r'接口模型|接口契约|^接口$')]
 def category(s):
- explicit=re.search(r'\b(M[123567]|MU)\b',s)
+ explicit=re.search(r'\b(M[1234567]|MU|ME|MM|MI)\b' if ELEVEN else r'\b(M[123567]|MU)\b',s)
  if explicit:return explicit[1]
  return next((m for m,p in RULES if re.search(p,s)),None)
 IDENTIFIER=r'\b(?:(?:BR|NR)-[A-Z]+-\d+|F-\d+-\d+|(?:FUNC|PROC(?:-APP)?|ROLE|REP|Q|R|B(?:-APP)?)-\d+)\b'
+EN_HEADERS={'rule':'规则','rule id':'规则','rule description':'规则说明','role':'角色','responsibilities':'职责','permission points':'权限点','owned aggregates':'聚合根','context':'上下文','service':'服务','entity':'实体','object':'对象','event':'事件','event name':'事件','interface':'接口'}
 def clean(s):return re.sub(r'[`*_]','',s).strip()
 def main():
  source=Path(sys.argv[1]).resolve();run=Path(sys.argv[2]).resolve();name=sys.argv[3];out=run/'artifacts';snap=run/'source';out.mkdir(parents=True,exist_ok=True);snap.mkdir(parents=True,exist_ok=True)
@@ -77,6 +81,7 @@ def main():
  emit('建立文档快照',f'已读取 {len(docs)} 份文档，正在识别显式业务定义',32)
  nodes=[];edges=[];contexts={};bykey={};mapping={};inventory=[]
  def add(model,label,ctx,ev,description='',cells=None):
+  if not model:return None
   label=clean(label);label=re.sub(r'^(?:[A-Z]\.)?\d+(?:\.\d+)*\.?\s+','',label);label=label.strip(' ：:')
   if not label or len(label)>100 or re.search(r'[~～]|待确认|对象关系|覆盖索引',label):return None
   external=re.search(IDENTIFIER,label)
@@ -91,6 +96,8 @@ def main():
   external=re.search(IDENTIFIER,label)
   n=dict(id=id,label=label,name=label,model=model,context=ctx,description=description[:2400],evidence=[ev],confidence='DOCUMENT_EXPLICIT_CANDIDATE',reviewRequired=True,status='DOCUMENT',sourceDefinition=cells or {})
   if external:n['documentId']=external[0]
+  if model=='ME':n.update(eventId=id,eventName=label,formalizationStatus='DOCUMENT_EVENT_DRAFT')
+  if model=='MI':n.update(interfaceId=id,formalizationStatus='DOCUMENT_INTERFACE_DRAFT')
   if model=='M1':n.update(alias=id,aggregateType='CANDIDATE',attributes=[],entities=[],valueObjects=[],invariants=[],lifecycle=[],boundaryStatus='REVIEW_REQUIRED')
   if model=='M2':n.update(behaviorType='QUERY' if (cells or {}).get('类型')=='QUERY' or re.search(r'^Q-\d|查询|统计|报表',label) else 'COMMAND',triggerType='SYSTEM' if (cells or {}).get('类型')=='AUTOMATIC' else 'USER_ACTION',triggerStatus='DOCUMENT_CANDIDATE',ownerEntity=None,preconditions=[],postconditions=[],appliedRules=[],requiredPermissions=[],syncTriggers=[])
   if model=='M3':n.update(ruleType='VALIDATION',ruleBoundary='LOCAL_OR_REUSABLE_REVIEW_REQUIRED',expression=None,formalizationStatus='DOCUMENT_NOT_EXECUTABLE',inputParams=[],outputType='待确认')
@@ -132,17 +139,17 @@ def main():
      object_node=add(mt,title,ctx,ev,'\n'.join(section)[:2400])
     continue
    # Plain-text explicit declarations are also accepted.
-   declaration=re.match(r'^\s*(业务对象|对象|行为|业务规则|规则|角色|流程|查询报表|报表|页面|界面)\s*[:：]\s*(.{1,90})$',line)
+   declaration=re.match(r'^\s*(业务对象|对象|行为|业务规则|规则|角色|流程|查询报表|报表|页面|界面|事件|场景|数据映射|接口)\s*[:：]\s*(.{1,90})$',line)
    if declaration:add(category(declaration[1]) or {'业务规则':'M3','业务对象':'M1'}.get(declaration[1]),declaration[2],ctx,ev,line)
    if line.strip().startswith('|'):
     cells=[clean(c) for c in line.strip().strip('|').split('|')]
     if all(re.fullmatch(r':?-+:?',c) for c in cells):continue
-    if not headers:headers=cells;continue
+    if not headers:headers=[EN_HEADERS.get(c.lower(),c) for c in cells];continue
     if len(cells)!=len(headers):continue
     kind=category(headers[0]) or current
     row=dict(zip(headers,cells));description='；'.join(a+'：'+b for a,b in row.items())
     if '聚合根' in row:
-     for alias in re.split(r'\s*/\s*|、',row['聚合根']):
+     for alias in re.split(r'\s*/\s*|、|,\s*',row['聚合根']):
       if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{1,70}',alias):
        obj=add('M1',alias,ctx,ev,description,row)
        if obj:obj['alias']=alias;obj['declaredContext']=row.get('上下文');obj['declaredService']=row.get('服务')
@@ -157,13 +164,15 @@ def main():
        if q:q['documentBehaviorRef']=b['id']
     if object_node and object_node['model']=='M1' and headers[0] in ('属性','字段','列'):
      row=dict(zip(headers,cells));object_node['attributes'].append(dict(name=cells[0],label=cells[0],type=row.get('类型','待确认'),required=row.get('必填')=='是',description=row.get('说明/约束',''),evidence=[ev]))
-    if kind and headers[0] in ('对象','实体','行为','功能','规则','角色','流程','REP','报表','页面','界面','屏幕'):
-     add(kind,cells[0],ctx,ev,'；'.join(a+'：'+b for a,b in zip(headers,cells)),dict(zip(headers,cells)))
+    if kind and headers[0] in ('对象','实体','行为','功能','规则','角色','流程','REP','报表','页面','界面','屏幕','事件','场景','接口','数据映射'):
+     label=cells[0]
+     if kind=='M3' and row.get('规则说明'):label=(label+' '+row['规则说明'])[:100]
+     add(kind,label,ctx,ev,'；'.join(a+'：'+b for a,b in zip(headers,cells)),dict(zip(headers,cells)))
    elif line.strip():headers=[]
    if len(nodes)>1500:raise ValueError('候选模型超过1500个，请缩小知识目录')
  models_only=[n for n in nodes if n['model']!='CTX']
  if not models_only:raise ValueError('文档已读取，但未发现明确的业务模型定义。请采用技能 V9 的对象/行为/规则/角色/流程/查询表格，或“业务对象：合同”等明确标题。当前为本地规则提取原型，不具备任意自然语言推理能力。')
- emit('生成七模型',f'提取到 {len(models_only)} 个待评审候选，建立有依据的关联',65)
+ emit('生成十一模型' if ELEVEN else '生成七模型',f'提取到 {len(models_only)} 个待评审候选，建立有依据的关联',65)
  external={n['documentId']:n for n in models_only if n.get('documentId')}
  objects=[n for n in models_only if n['model']=='M1']
  for n in models_only:
@@ -183,6 +192,8 @@ def main():
  def model(t,**kw):return dict(model_type=t,version='1.0',domain=name,modelingMode='DOCUMENT_DRAFT',**kw)
  models={'m1-object-model.yaml':model('OBJECT',aggregates=lists['M1'],entities=[],valueObjectCatalog=[],dictionaries=[],associations=[]),'m2-behavior-model.yaml':model('BEHAVIOR',behaviors=lists['M2']),'m3-rule-model.yaml':model('RULE',rules=lists['M3']),'m5-actor-model.yaml':model('ACTOR',actors=[],roles=lists['M5'],permissions=[]),'m6-flow-model.yaml':model('FLOW',flows=lists['M6']),'m7-report-model.yaml':model('REPORT',query_reports=lists['M7']),'mu-ui-model.yaml':model('UI',application=dict(name=name,menus=[]),screens=lists['MU'])}
  ids={n['id'] for n in nodes};checks=[dict(check='Document graph references',passed=all(e['source'] in ids and e['target'] in ids for e in edges),count=len(edges)),dict(check='Document evidence anchors',passed=all(n['evidence'] for n in nodes),count=len(nodes)),dict(check='Document M7 ↔ M2 binding',passed=all(sum(b.get('queryReportRef')==q['id'] and b['id']==q['behaviorRef'] for b in lists['M2'])==1 for q in lists['M7']),count=len(lists['M7']))]
+ if ELEVEN:
+  for k,(file,key,kind) in EXTRA.items():models[file]=model(kind,**{key:[n for n in nodes if n['model']==k]})
  limits=['基于 ontology-driven-dev V9 的文档候选提取，不等同于完整执行技能需求探索与人工确认。','仅识别明确标题与表格，不调用外部大模型；任意自然语言、图片和复杂表格可能无法识别。','文档中的已确认标记不自动转成平台人工确认。所有元素须重新评审。','M6 保留流程原文，不补造活动、分支和审批图；M7 保留查询原文，不补造字段血缘；M5 不代表已执行权限。','七模型文件齐备不表示每种模型都有内容；缺失类型不补造。','DOCX/HTML 证据行号对应提取文本；Markdown/TXT 对应原文行号。','PDF、扫描件、旧版 DOC、表格和演示文稿暂不支持。']
  manifest=dict(model_type='MANIFEST',version='1.0',domain=name,framework='ontology_modeling_framework_v9.md',model_files=list(models),adapter='document-directory',scope='DOCUMENT_MODELING_DRAFT',complete=False,source_root=str(source),source_status='只读文档快照；待领域评审',source_commit='not-applicable',source_fingerprint=hashlib.sha256(json.dumps(inventory,sort_keys=True).encode()).hexdigest(),analysis_files=len(docs),limitations=limits,validation=checks,documentInventory=dict(files=inventory,skipped=skipped,unsupported=unsupported),scanInventory=dict(version=1,languages={},modules=[],skipped=skipped,scope='文档目录候选提取，非源码扫描'))
  counts=dict(services=len(contexts),objects=len(lists['M1']),behaviors=len(lists['M2']),rules=len(lists['M3']),queries=len(lists['M7']),flows=len(lists['M6']),lifecycleFlows=0,screens=len(lists['MU']))

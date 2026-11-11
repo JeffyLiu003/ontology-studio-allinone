@@ -1,7 +1,8 @@
-const TYPES=['M1','M2','M3','M5','M6','M7','MU'];
+import {validateModels} from './model-validation.mjs';
+const TYPES=['M1','M2','M3','M5','M6','M7','MU','ME','M4','MM','MI'];
 const evidenceValid=e=>!!e?.path&&Number.isInteger(e.line)&&e.line>0&&/^[a-f0-9]{64}$/i.test(e.sha256||'');
 const rate=(n,d)=>d?Math.round(n/d*100):null;
-export function modelQuality(data) {
+function baseModelQuality(data) {
  if(data.manifest?.adapter==='document-directory')return documentQuality(data);
  const nodes=data.nodes||[],edges=data.edges||[],manifest=data.manifest||{},scan=manifest.scanInventory||null,models=nodes.filter(n=>n.model!=='CTX'),byId=new Map(nodes.map(n=>[n.id,n]));
  const reviews=new Map((data.reviews||[]).map(r=>[r.node_id,r])),issues=[];
@@ -62,4 +63,10 @@ function documentQuality(data){
  const modules=Object.entries(data.contexts).map(([context,name])=>{const group=models.filter(n=>n.context===context),bs=group.filter(n=>n.model==='M2'),qs=group.filter(n=>n.model==='M7');return {context,name,counts:Object.fromEntries(TYPES.map(t=>[t,group.filter(n=>n.model===t).length])),models:group.length,commands:bs.filter(b=>b.behaviorType==='COMMAND').length,commandCovered:0,queries:bs.filter(b=>b.behaviorType==='QUERY').length,queryCovered:bs.filter(b=>qs.some(q=>q.behaviorRef===b.id)).length,scanKnown:false,entityCandidates:0,objectMatches:0,endpointCandidates:0,endpointMatches:0}});
  const confirmed=models.filter(n=>reviews.get(n.id)?.status==='confirmed').length,needsChanges=models.filter(n=>reviews.get(n.id)?.status==='needs_changes').length,withEvidence=models.filter(n=>(n.evidence||[]).some(evidenceValid)).length;
  return {version:1,status:checks.some(c=>!c.passed)?'blocked':'review_required',scanKnown:true,counts,summary:{models:models.length,modules:modules.length,withEvidence,evidencePercent:rate(withEvidence,models.length),confirmed,needsChanges,pending:models.length-confirmed,checksPassed:checks.filter(c=>c.passed).length,checksTotal:checks.length,unresolvedColumns:0,issues:issues.length},modules,lineage:{},issues,scan:{languages:{},scope:'只读文档目录；文档来源分组不等于已确认业务域。',analyzedFiles:data.manifest.analysis_files,analyzedJavaFiles:0},adapter:'document-directory',capabilities:[{scope:'Markdown / TXT / HTML / DOCX',status:'partial',detail:'识别明确的七模型标题、表格与声明，保留原始文件及提取文本证据。'},{scope:'M6 流程 / M7 查询 / M5 权限',status:'partial',detail:'保留文档描述及显式引用，不补造可执行流程、查询血缘和已实施授权。'},{scope:'PDF / 扫描件 / 任意自然语言推理',status:'unsupported',detail:'当前没有 OCR 或外部模型服务。'}],notice:'这是文档候选建模草稿，证据完整率与引用检查不等于业务准确率；尚未完成技能规定的需求探索人工确认。'};
+}
+
+export function modelQuality(data){
+ const base=baseModelQuality(data),cross=validateModels(data);const added=cross.issues.map((issue,index)=>({id:'cross-'+index+'-'+issue.code,code:issue.code,severity:issue.severity,title:'跨模型一致性问题',detail:issue.message+' · '+issue.path,nodeId:issue.nodeId,evidence:(data.nodes||[]).find(n=>n.id===issue.nodeId)?.evidence||[]}));
+ const groups=new Map();for(const n of data.nodes||[])if(n.model!=='CTX'&&n.label){const key=n.model+':'+n.label.replace(/\s+/g,'').toLowerCase();groups.set(key,[...(groups.get(key)||[]),n])}for(const [key,rows]of groups)if(rows.length>1)added.push({id:'conflict-'+encodeURIComponent(key),code:'MATERIAL_CONFLICT',severity:'warning',title:'同名定义需要核对差异',detail:'保留代码现状、文档要求和人工修订，默认代码优先仅用于可核验的当前实现；不得只按名称合并。涉及：'+rows.map(n=>n.id).join(', '),nodeId:rows[0].id,evidence:rows.flatMap(n=>n.evidence||[]).slice(0,5)});
+ return {...base,issues:[...base.issues,...added],summary:{...base.summary,issues:base.issues.length+added.length},status:base.status==='insufficient'?'insufficient':added.some(i=>i.severity==='error')?'blocked':added.length?'review_required':base.status,crossModel:cross};
 }

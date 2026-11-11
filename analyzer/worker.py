@@ -92,6 +92,9 @@ def main():
   elif isinstance(obj,dict):
    if 'path'in obj and 'line'in obj and obj['path']in mapping:obj['path']=mapping[obj['path']]
    for x in obj.values():restore(x)
+ if os.getenv('ONTOLOGY_MODELING_METHOD') in ('eleven','nine'):
+  from contract_models import enrich
+  enrich(data,snapshot)
  restore(data)
  # Current-format summaries are derived from the result, never hardcoded CardDemo counts.
  data['counts']['flows']=len(data['models']['m6-flow-model.yaml']['flows']);data['counts']['lifecycleFlows']=sum(f.get('modelingLevel')=='BUSINESS_LIFECYCLE'for f in data['models']['m6-flow-model.yaml']['flows'])

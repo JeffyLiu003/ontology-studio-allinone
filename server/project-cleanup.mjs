@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, mkdirSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 export class ProjectCleanup {
  constructor(store,runtime){this.store=store;this.runtime=realpathSync(runtime);store.db.exec('CREATE TABLE IF NOT EXISTS project_cleanup(project_id TEXT PRIMARY KEY,phase TEXT NOT NULL)');this.recover();}
  staged(id){if(!/^repo_[a-f0-9]{16}$/.test(id))throw Error('无效项目标识');const dir=join(this.runtime,'.project-cleanup');mkdirSync(dir,{recursive:true});if(lstatSync(dir).isSymbolicLink())throw Error('项目清理目录不能是符号链接');return join(dir,id);}
@@ -15,12 +15,13 @@ export class ProjectCleanup {
  recover(){for(const item of this.pending())try{
   const staged=this.staged(item.project_id),project=this.store.project(item.project_id);
   if(project){const original=this.clone(project);if(existsSync(staged)){if(!original||existsSync(original))continue;renameSync(staged,original);}}
-  else rmSync(staged,{recursive:true,force:true});
+  else {rmSync(staged,{recursive:true,force:true});if(/^repo_[a-f0-9]{16}$/.test(item.project_id))rmSync(join(this.runtime,'uploads',item.project_id),{recursive:true,force:true});}
   this.store.run('DELETE FROM project_cleanup WHERE project_id=?',item.project_id);
  }catch{}return this.pending();}
  remove(id){
   const project=this.store.project(id);if(!project)throw Object.assign(Error('项目不存在或已清理'),{status:404});
   if(this.store.one('SELECT id FROM jobs WHERE project_id=? LIMIT 1',id)||this.store.one('SELECT id FROM snapshots WHERE project_id=? LIMIT 1',id))throw Object.assign(Error('项目仍有任务或快照，不能作为空项目清理。'),{status:409});
+  const managed=join(this.runtime,'uploads',id);if(this.store.all('SELECT id,path FROM projects WHERE id<>?',id).some(p=>p.path===managed||p.path.startsWith(managed+sep)))throw Error('上传资料被其他项目引用，暂不能清理');if(this.store.one("SELECT name FROM sqlite_master WHERE type='table' AND name='materials'")&&this.store.all('SELECT path FROM materials WHERE project_id<>?',id).some(m=>m.path===managed||m.path.startsWith(managed+sep)))throw Error('上传资料被其他项目引用，暂不能清理');
   const original=this.clone(project),staged=this.staged(id);if(existsSync(staged))throw Error('此项目存在待恢复清理，请先重试文件清理。');
   this.store.run("INSERT INTO project_cleanup VALUES(?,'staging')",id);
   try{

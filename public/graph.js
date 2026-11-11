@@ -2,7 +2,7 @@ import { MODEL, esc, icon } from './ui.js';
 import { GraphFullscreen } from './graph-fullscreen.js';
 import { graphSlice, neighborhood, directedCurve } from './graph-model.js';
 const NS = 'http://www.w3.org/2000/svg';
-const COLORS = { CTX:'#b4c9e9', M1:'#ab9aff', M2:'#62b5f5', M3:'#edbf6b', M5:'#e695c3', M6:'#6ad7ba', M7:'#6dccdf', MU:'#c5a4ed' };
+const COLORS = { ME:'#bf85e0', M4:'#5ec4d2', MM:'#a1b96c', MI:'#e3a57a', CTX:'#b4c9e9', M1:'#ab9aff', M2:'#62b5f5', M3:'#edbf6b', M5:'#e695c3', M6:'#6ad7ba', M7:'#6dccdf', MU:'#c5a4ed' };
 const make = (tag, attrs = {}) => { const el = document.createElementNS(NS, tag); for (const [k,v] of Object.entries(attrs)) el.setAttribute(k,v); return el; };
 let serial = 0;
 
@@ -62,13 +62,13 @@ export class GraphView {
   this.layoutClusters();this.draw();
  }
  layoutClusters(){
-  const contexts=[...new Set(this.nodes.map(n=>n.context||''))];const count=contexts.length;
+  const contexts=[...new Set(this.nodes.map(n=>n.context||''))];const count=contexts.length,groups=new Map(),indexes=new Map();for(const n of this.nodes){const key=n.context||'';if(!groups.has(key))groups.set(key,[]);indexes.set(n.id,groups.get(key).length);groups.get(key).push(n)}
   this.world={w:Math.max(1000,Math.sqrt(count)*500),h:Math.max(800,Math.sqrt(count)*420)};
   const compact=!!this.focus||count===1;
   this.nodes.forEach((n,i)=>{
    const index=contexts.indexOf(n.context||''),angle=index*2.399,dist=compact?0:Math.sqrt(index)*240;
    const hx=this.world.w/2+Math.cos(angle)*dist,hy=this.world.h/2+Math.sin(angle)*dist*.8;
-   const group=this.nodes.filter(p=>p.context===n.context),j=group.indexOf(n),r=n.model==='CTX'?0:30+Math.sqrt(j+1)*(compact?48:27);
+   const group=groups.get(n.context||''),j=indexes.get(n.id),r=n.model==='CTX'?0:30+Math.sqrt(j+1)*(compact?48:27);
    n.homeX=hx;n.homeY=hy;n.x=hx+Math.cos(j*2.399)*r;n.y=hy+Math.sin(j*2.399)*r;
   });
   if(this.mode==='domains')this.nodes.forEach((n,i)=>{const a=i*2.399,r=Math.sqrt(i)*105;n.x=this.world.w/2+Math.cos(a)*r;n.y=this.world.h/2+Math.sin(a)*r;n.homeX=n.x;n.homeY=n.y;});
@@ -127,7 +127,7 @@ export class GraphView {
   this.userMoved=false;this.update();this.highlight();this.fit();this.showSelection();this.ticks=0;this.run();this.syncState();
  }
  run(){
-  if(this.mode==='flow'||this.paused||this.reduced.matches||this.destroyed||this.frame||!this.nodes.length)return;
+  if(this.nodes.length>600||this.mode==='flow'||this.paused||this.reduced.matches||this.destroyed||this.frame||!this.nodes.length)return;
   const tick=()=>{
    this.frame=0;if(this.destroyed||this.paused||this.reduced.matches)return;
    const alpha=Math.max(.03,1-this.ticks/160),nodes=this.nodes;
@@ -148,9 +148,9 @@ export class GraphView {
   this.frame=requestAnimationFrame(tick);
  }
  syncState(){
-  const running=this.mode!=='flow'&&!this.paused&&!this.reduced.matches&&this.ticks<160;
-  const status=this.el.querySelector('.graph-engine-status');status.textContent=this.mode==='flow'?'流程拓扑':this.reduced.matches?'减少动态效果':this.paused?'布局已暂停':running?'力导向布局中':'布局已稳定';status.classList.toggle('running',running);
-  const button=this.el.querySelector('.cg-layout-toggle');if(button){button.innerHTML=icon(this.paused?'refresh':'stop',12)+(this.paused?'继续布局':'暂停布局');button.setAttribute('aria-label',this.paused?'继续动态布局':'暂停动态布局');button.setAttribute('aria-pressed',String(this.paused));}
+  const large=this.nodes.length>600;const running=!large&&this.mode!=='flow'&&!this.paused&&!this.reduced.matches&&this.ticks<160;
+  const status=this.el.querySelector('.graph-engine-status');status.textContent=large?'大图静态总览（可拖拽缩放）':this.mode==='flow'?'流程拓扑':this.reduced.matches?'减少动态效果':this.paused?'布局已暂停':running?'力导向布局中':'布局已稳定';status.classList.toggle('running',running);
+  const button=this.el.querySelector('.cg-layout-toggle');if(button){button.disabled=large;button.style.cursor=large?'default':'';button.title=large?'超过600个节点采用静态总览，缩小范围可使用动态布局':'';button.innerHTML=icon(this.paused?'refresh':'stop',12)+(this.paused?'继续布局':'暂停布局');button.setAttribute('aria-label',this.paused?'继续动态布局':'暂停动态布局');button.setAttribute('aria-pressed',String(this.paused));}
  }
  update(){
   for(const n of this.nodes)n.el?.setAttribute('transform',`translate(${n.x},${n.y})`);
